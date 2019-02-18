@@ -1,0 +1,602 @@
+﻿<head>
+  <link rel="stylesheet" href="./css/map.css">
+</head>
+<body onload="load()">
+<div>
+	<div id="position">
+	</div>
+	<div>
+		<!-- oncontextmenu => return이 false면 우클릭시 기본 contextmenu 기능 막기-->
+		<canvas id="myCavas" width="1000" height="600" style="border-style: solid;" 
+		onmousedown="mouseDown()" onmousemove="mouseMove()" onmouseup="mouseUp()" 
+		oncontextmenu="return clickRight()" ondblclick="doubleClick()">
+		</canvas>
+	</div>
+	<div>
+		<!-- <input type="button" value="save" style="width:100pt; height:50pt" onclick="clickSaveButton()" />
+		<input type="button" value="load" style="width:100pt; height:50pt" onclick="clickLoadButton()" />
+		<input type="file" id="filePath" onchange="findFilePath(this)" /> -->
+		<!-- <input type="button" value="redo" style="width:100pt; height:50pt" onclick="clickSaveButton()" />
+		<input type="button" value="undo" style="width:100pt; height:50pt" onclick="clickLoadButton()" /> -->
+	</div>
+	 <!-- 마우스 오른쪽 메뉴 -->
+	 <div id="context-menus" class="context-menus">
+	    <ul>
+	      <li onclick="clickContextMenu1()">copy</li>
+	      <li onclick="clickContextMenu2()">delete</li>
+	    </ul>
+	 </div>
+</div>
+<script type="text/javascript">
+	var canvas = document.getElementById("myCavas");
+	var myContext = canvas.getContext("2d");
+
+	var e;
+
+	var tempX = 0;
+	var tempY = 0;
+
+	//드래그 할지 안할지 판단
+	var stopped = true;
+
+	var textBox = null;
+
+	var selectedRect = null; //선택된 객체
+	var rects = new Array();
+
+	var queue = new Array();
+
+	//컨텍스트메뉴 관련
+	var contextMenu = document.getElementById("context-menus");
+	var isShowContextMenu = false;
+
+	var filePath = document.getElementById("filePath");
+
+	//화면 다시 그리기
+	function repaint(){
+		myContext.clearRect(0, 0, canvas.width, canvas.height);
+		for(var i = 0; i < rects.length; i++){
+			rects[i].render();
+		}
+		if(selectedRect) selectedRect.render();
+	}
+
+	function largeRect(){
+		var edge = [null, null, null, null];
+	
+		this.x = 10;
+		this.y = 10;
+		this.width = 100;
+		this.height = 50;
+		this.color = "white";
+		this.text = "doubleClick!";
+		this.selectedEdge = null;
+		this.isSelected = false;
+		this.parent = null;
+		this.childs = [];
+
+		this.init = function(){
+			//create edge
+			edge[0] = new SERect();
+			edge[1] = new SWRect();
+			edge[2] = new NERect();
+			edge[3] = new NWRect();
+
+			this.setPosition(this.x, this.y);
+		}
+
+		this.checkEdgeArea = function(ex, ey){
+			for(var i = 0; i < edge.length; i++){
+				if(edge[i].isInArea(ex, ey)){
+					return edge[i];
+				}
+			}
+			return null;
+		},
+
+		this.setSelectEdge = function(ex, ey){
+			this.selectedEdge = this.checkEdgeArea(ex, ey);
+		},
+
+		this.clearSelectEdge = function(){
+			this.selectedEdge = null;
+		},
+
+		this.setPosition = function(x, y){
+			this.x = x;
+			this.y = y;
+
+			edge[0].setPosition(this.x - 3, this.y - 3);
+			edge[1].setPosition(this.x + this.width - 3, this.y - 3);
+			edge[2].setPosition(this.x - 3, this.y + this.height - 3);
+			edge[3].setPosition(this.x + this.width - 3, this.y + this.height - 3);
+
+			repaint();
+		},
+
+		this.setSize = function(width, height){
+			this.width = width;
+			this.height = height;
+
+			this.setPosition(x, y);
+		},
+
+		this.setColor = function(color){
+			this.color = color;
+			repaint();
+		},
+
+		//크기 확 줄일 때 좌표까지 변하는 것 수정하기
+		this.setResize = function(ex, ey){
+			if(this.selectedEdge != null){
+				switch(this.selectedEdge.getString()){
+					case "SERect": //왼쪽 위 모서리
+						this.width += this.x - ex;
+						this.height += this.y - ey;
+						var tempX = this.x;
+						var tempY = this.y;
+						this.x = ex;
+						this.y = ey;
+
+						if(this.width < 10){
+							this.x = tempX;
+							this.width = 10;
+						}
+
+						if(this.height < 10){
+							this.y = tempY;
+							this.height = 10;
+						}
+
+						this.setPosition(this.x, this.y);
+
+						return true;
+					case "SWRect": //오른쪽 위 모서리
+						this.width = ex - this.x;
+						this.height += this.y - ey;
+						var tempY = this.y;
+						this.y = ey;
+
+						if(this.width < 10){
+							this.width = 10;
+						}
+
+						if(this.height < 10){
+							this.y = tempY;
+							this.height = 10;
+						}
+
+						this.setPosition(this.x, this.y);
+
+						return true;
+					case "NERect": //왼쪽 아래 모서리
+						this.width += this.x - ex;
+						this.height = ey - this.y;
+						var tempX = this.x;
+						this.x = ex;
+
+						if(this.width < 10){
+							this.x = tempX;
+							this.width = 10;
+						}
+
+						if(this.height < 10){
+							this.eight = 10;
+						}
+						
+						this.setPosition(this.x, this.y);
+
+						return true;
+					case "NWRect": //오른쪽 아래 모서리
+						this.width = ex - this.x;
+						this.height = ey - this.y;
+
+						if(this.width < 10){
+							this.width = 10;
+						}
+
+						if(this.height < 10){
+							this.height = 10;
+						}
+
+						this.setPosition(this.x, this.y);
+						return true;
+				}
+			}
+
+			return false;
+		},
+
+		this.render = function(){
+			myContext.fillStyle = this.color;   // 도형을 채우는 색 설정
+			myContext.fillRect(this.x, this.y, this.width, this.height);
+
+			myContext.fillStyle = "black";  //도형 모서리색
+			myContext.strokeRect(this.x, this.y, this.width, this.height);
+
+			if(this.isSelected){
+				for(var i = 0; i < edge.length; i++){
+					edge[i].render();
+				}
+			}
+
+			myContext.font = "13px Arial";
+			var textWidth = myContext.measureText(this.text).width;
+			myContext.fillText(this.text, this.x + (this.width / 2) - textWidth / 2, this.y + (this.height / 2) + 5);
+
+			if(this.parent){
+				myContext.beginPath();
+				myContext.moveTo(this.x + this.width/2, this.y);
+				myContext.lineTo(this.parent.x + this.parent.width/2, this.parent.y + this.parent.height);
+				myContext.stroke();
+			}
+		}
+	}
+
+	//메인사각형의 모서리에 위치 할 사각형
+	function smallRect(){
+		this.x = 0;
+		this.y = 0;
+		this.width = 9;
+		this.height = 9;
+
+		this.setPosition = function(x, y){
+			this.x = x;
+			this.y = y;
+		};
+
+		//마우스가 해당 객체의 영역에 있는지 체크
+		this.isInArea = function(ex, ey){
+			return (ex > this.x && ey > this.y && ex < this.x + this.width && ey < this.y + this.height);
+		};
+
+		this.render = function(){
+			myContext.fillRect(this.x, this.y, this.width, this.height);
+		};
+
+		this.getString = function(){
+			return "smallRect";
+		};
+	};
+
+	//south/east
+	function SERect(){
+		smallRect.call(this);
+
+		this.changeCusor = function(ex, ey){
+			if(this.isInArea(ex, ey)){
+				canvas.style.cursor = "se-resize";
+				return true;
+			}
+			return false;
+		};
+
+		this.getString = function(){
+			return "SERect";
+		};
+	};
+
+	//south/west
+	function SWRect(){
+		smallRect.call(this);
+
+		this.changeCusor = function(ex, ey){
+			if(this.isInArea(ex, ey)){
+				canvas.style.cursor = "sw-resize";
+				return true;
+			}
+			return false;
+		};
+
+		this.getString = function(){
+			return "SWRect";
+		};
+	};
+
+	//north/east
+	function NERect(){
+		smallRect.call(this);
+
+		this.changeCusor = function(ex, ey){
+			if(this.isInArea(ex, ey)){
+				canvas.style.cursor = "ne-resize";
+				return true;
+			}
+			return false;
+		};
+
+		this.getString = function(){
+			return "NERect";
+		};
+	};
+
+	//north/west
+	function NWRect(){
+		smallRect.call(this);
+
+		this.changeCusor = function(ex, ey){
+			if(this.isInArea(ex, ey)){
+				canvas.style.cursor = "nw-resize";
+				return true;
+			}
+			return false;
+		};
+
+		this.getString = function(){
+			return "NWRect";
+		};
+	};
+
+	//페이지 첫 실행시
+	function load(){
+		//root 생성
+		var rect = new largeRect();
+		rect.init();
+		rects.push(rect);
+
+		repaint();
+	}
+
+	//드래그 시작
+	function mouseDown(){
+		console.log("onmousedown");
+
+		hideContextMenu();
+
+		e = window.event;
+		var clientX = e.clientX - 10;
+		var clientY = e.clientY - 10;
+
+		for(var i = 0; i < rects.length; i++){
+			//초기화 먼저 해줌
+			rects[i].isSelected = false;
+
+			if(clientX > rects[i].x && clientY > rects[i].y && 
+			clientX < rects[i].x + rects[i].width && clientY < rects[i].y + rects[i].height){
+				selectedRect = rects[i];
+			}
+		}
+
+		if(!selectedRect) {
+			return;
+		}
+		
+		if(textBox){
+			document.body.removeChild(textBox);
+			if(textBox.value != ""){
+				selectedRect.text = textBox.value;
+			}
+			textBox = null;
+		}
+
+		selectedRect.setSelectEdge(clientX, clientY);
+		if(selectedRect.selectedEdge != null){
+			selectedRect.isSelected = true;
+			stopped = false;
+		}else if( clientX > selectedRect.x && clientY > selectedRect.y && 
+			clientX < selectedRect.x + selectedRect.width && clientY < selectedRect.y + selectedRect.height){
+				tempX = e.clientX - selectedRect.x;
+				tempY = e.clientY - selectedRect.y;
+
+				selectedRect.setColor("#43DAEC");
+
+				stopped = false;
+				selectedRect.isSelected = true;
+			}else{
+				selectedRect = null;
+				repaint();
+			}
+	};
+
+	//드래그 끝
+	function mouseUp(){
+		console.log("onmouseup");
+
+		if(!selectedRect) return;
+		selectedRect.setColor("white");
+		selectedRect.clearSelectEdge();
+
+		stopped = true;
+	};
+
+	//드래그 하는 중
+	function mouseMove(){
+		console.log("onmousemove");
+
+		e = window.event;
+		var clientX = e.clientX - 10;
+		var clientY = e.clientY - 10;
+
+		//커서 모양(커서 위치가 객체 위에 있는지 체크)
+		for(var i = 0; i < rects.length; i++){
+			if( clientX > rects[i].x && clientY > rects[i].y && 
+				clientX < rects[i].x + rects[i].width && clientY < rects[i].y + rects[i].height){
+				canvas.style.cursor = "pointer";
+				break;
+			}else{
+				canvas.style.cursor = "default";
+			}
+		}
+
+		if(!selectedRect) return;
+
+		var edge = selectedRect.checkEdgeArea(clientX, clientY);
+		if(edge != null){
+			edge.changeCusor(clientX, clientY);
+		}
+
+		//드래그 되는 중일 때
+		if(!stopped){
+			myContext.clearRect(0, 0, canvas.width, canvas.height);
+			if(selectedRect.selectedEdge != null){
+				selectedRect.setResize(clientX, clientY);
+			}else{
+				selectedRect.setPosition(e.clientX - tempX , e.clientY - tempY);
+			}
+		}
+	};
+
+	//마우스 더블클릭
+	function doubleClick(){
+		console.log("doubleClick");
+
+		if(!selectedRect) return;
+		e = window.event;
+		var clientX = e.clientX - 10;
+		var clientY = e.clientY - 10;
+
+		if(!textBox && clientX > selectedRect.x && clientY > selectedRect.y && 
+			clientX < selectedRect.x + selectedRect.width && clientY < selectedRect.y + selectedRect.height){
+			//create textbox
+			textBox = document.createElement("input");
+			textBox.type = "text";
+			textBox.style.position = "fixed";
+			textBox.style.left = selectedRect.x + (selectedRect.width / 2) - 25;
+			textBox.style.top = selectedRect.y + (selectedRect.height / 2);
+			textBox.style.width = 70;
+			textBox.style.textAlign = "center";
+			textBox.placeholder = "input text";
+
+			document.body.appendChild(textBox);
+		}
+	};
+
+	//마우스 우클릭 후
+	function clickRight(){
+		if(!selectedRect) return false;
+
+		var clientX = e.clientX - 10;
+		var clientY = e.clientY - 10;
+		if( clientX > selectedRect.x && clientY > selectedRect.y && 
+			clientX < selectedRect.x + selectedRect.width && clientY < selectedRect.y + selectedRect.height){
+				tempX = e.clientX - selectedRect.x;
+				tempY = e.clientY - selectedRect.y;
+
+				showContextMenu(clientX, clientY);
+			}else{
+				hideContextMenu();
+			}
+
+		return false;
+	}
+
+	//----- 마우스 우클릭 후 나오는 컨텍스트메뉴 관련 -----
+	function showContextMenu(x, y){
+		if(!isShowContextMenu){
+			contextMenu.style.left = x + "px";
+			contextMenu.style.top = y + "px";
+			contextMenu.classList.add("active");
+		}
+		
+		isShowContextMenu = true;
+	}
+
+	function hideContextMenu(){
+		if(isShowContextMenu){
+			contextMenu.classList.remove("active");
+		}
+		isShowContextMenu = false;
+	}
+
+	function clickContextMenu1(){
+		console.log("1번째 ContextMenu 선택");
+		hideContextMenu();
+		var rect = new largeRect();
+		rect.parent = selectedRect;
+		rect.init();
+		rect.setPosition(rect.parent.x, rect.parent.y + rect.parent.height + 20);
+		rects.push(rect);
+		rect.parent.childs.push(rect);
+		repaint();
+	}
+
+	function clickContextMenu2(){
+		console.log("2번째 ContextMenu 선택");
+		hideContextMenu();
+		for(var i = 0; i < rects.length; i++){
+			if(rects[i] == selectedRect){
+				removeChild(rects[i].childs);
+				rects[i].childs = null;
+				removeItem(rects, rects[i]);
+				selectedRect = null;
+				repaint();
+			}
+		}
+	}
+
+	function removeChild(childs){
+		//childs 안에 있는 child들을 전부 삭제하기 위해 재귀함수 사용
+		for(var i = 0; i < childs.length; i++){
+			//최하위 child부터 삭제시켜나감
+			if(childs[i].childs){
+				removeChild(childs[i].childs);
+			}
+			removeItem(rects, childs[i]);
+		}
+	}
+
+	var queue = {
+		data: null,
+
+		init: function(){
+			this.data = new Array();
+		},
+
+		insert: function(value){
+			this.data.push(value); //마지막에 삽입
+		},
+
+		delete: function(){
+			this.data.splice(0, 1); //첫번째 값 제거
+		},
+	}
+
+
+	function clickSaveButton(){
+		var resultMsg = "";
+		for(var i = 0; i < rects.length; i++){
+			resultMsg += rects[i].x + " " + rects[i].y + " " + rects[i].width + " " + rects[i].height;
+			if(i != rects.length -1 ) resultMsg += "\r\n";
+		}
+
+
+		saveFile(resultMsg);
+	}
+
+	function clickLoadButton(){
+		//input file은 커스터마이징을 할 수 없어서 hidden으로 해놓고 버튼이 눌릴 때 강제로 눌리도록 함.
+		//좋은 방법은 아님
+		filePath.click();
+	}
+
+	 function findFilePath(path) {
+	 	var a = document.getElementById("filePath").files[0].path;
+	 	alert("파일네임: " + a);
+    }
+
+	//----------Util-------------
+	//배열에서 value값을 제거함
+	function removeItem(array, value){
+	    for(var i in array){
+	        if(array[i] == value){
+	            array.splice(i, 1);
+	            break;
+	        }
+	    }
+	}
+
+	function saveFile(context){
+	     var hiddenElement = document.createElement('a');
+	     hiddenElement.href = 'data:attachment/text,' + encodeURI(context);
+	     hiddenElement.target = './_blank';
+	     hiddenElement.download = 'mapSaveData.txt';
+	     hiddenElement.click();
+	}
+
+	//웹브라우저가 IE인지 아닌지 식별
+	function isIE(){
+		return (navigator.appName === "Netscape" && navigator.userAgent.search("Trident") !== -1) || navigator.userAgent.toLowerCase().indexOf("msie") !== -1;
+	}
+
+</script>
+</body>

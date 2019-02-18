@@ -1,0 +1,27 @@
+/* 마우스 컨텍스트 메뉴 */
+
+#filePath {
+  display:none;
+}
+
+.context-menus {
+  position: absolute;
+  display: none;
+  border: 1px solid black;
+  width: 80px;
+  text-align: center;
+}
+
+.context-menus.active {
+  display: block;
+  background-color: white;
+}
+
+.context-menus.active>ul {
+  list-style: none;
+  padding:0px;
+}
+
+.context-menus.active>ul>li:hover {
+  background-color: lightgreen;
+}
